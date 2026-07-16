@@ -70,7 +70,7 @@ sequenceDiagram
   Client-->>App: onStatus accepted
   Client->>Policy: shouldSend + budget
   alt deferred
-    Note over Client,Outbox: still queued; return id
+    Client-->>App: return id still queued
   else attempt
     Client->>Transport: send
     Client-->>App: onStatus transmitted
@@ -78,7 +78,7 @@ sequenceDiagram
       Client->>Outbox: remove
       Client-->>App: onStatus delivered
     else failed
-      Note over Client: backoff / attempt cap
+      Client-->>Client: backoff / attempt cap
     end
   end
 ```
