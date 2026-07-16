@@ -1,0 +1,25 @@
+name: d2c_burst
+description: >
+  Direct-to-Cell narrowband burst profile.
+  Adapted from ntn-in-a-box for ntnkit conformance testing.
+
+schedule:
+  mode: periodic
+  period_sec: 300
+  window_sec: 20
+  lookahead_sec: 15
+
+curves:
+  delay_ms:
+    - { offset_sec: 0, value: 200 }
+  jitter_ms:
+    - { offset_sec: 0, value: 30 }
+  loss_pct:
+    - { offset_sec: 0, value: 5 }
+  bandwidth_kbps:
+    - { offset_sec: 0, value: 64 }
+
+ntnkit:
+  max_payload_bytes: 512
+  max_retries_per_window: 2
+  daily_byte_budget: 10000

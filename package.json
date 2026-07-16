@@ -1,0 +1,33 @@
+{
+  "name": "ntnkit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Satellite-ready application layer for NTN and NTN-IoT",
+  "author": "Hossein Yavari",
+  "license": "Apache-2.0",
+  "scripts": {
+    "preinstall": "npx only-allow pnpm",
+    "clean": "pnpm --filter @ntnkit/core --filter @ntnkit/sdk --filter @ntnkit/scan run clean",
+    "build": "pnpm clean && pnpm --filter @ntnkit/core run build && pnpm --filter @ntnkit/sdk --filter @ntnkit/scan run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint packages examples",
+    "typecheck": "pnpm --filter @ntnkit/core run typecheck && pnpm --filter @ntnkit/core run build && pnpm --filter @ntnkit/sdk --filter @ntnkit/scan run typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.28.0",
+    "@types/node": "^22.15.0",
+    "eslint": "^9.28.0",
+    "only-allow": "^1.2.1",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.33.0",
+    "vitest": "^3.2.0"
+  },
+  "packageManager": "pnpm@10.11.0",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=10"
+  }
+}

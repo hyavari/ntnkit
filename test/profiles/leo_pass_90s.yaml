@@ -1,0 +1,37 @@
+name: leo_pass_90s
+description: >
+  Single-satellite LEO pass with 90s window and 600s period.
+  Adapted from ntn-in-a-box for ntnkit conformance testing.
+
+schedule:
+  mode: periodic
+  period_sec: 600
+  window_sec: 90
+  lookahead_sec: 30
+
+curves:
+  delay_ms:
+    - { offset_sec: 0, value: 150 }
+    - { offset_sec: 15, value: 40 }
+    - { offset_sec: 75, value: 40 }
+    - { offset_sec: 90, value: 100 }
+  jitter_ms:
+    - { offset_sec: 0, value: 40 }
+    - { offset_sec: 15, value: 5 }
+    - { offset_sec: 75, value: 5 }
+    - { offset_sec: 90, value: 40 }
+  loss_pct:
+    - { offset_sec: 0, value: 10 }
+    - { offset_sec: 15, value: 0.2 }
+    - { offset_sec: 75, value: 0.2 }
+    - { offset_sec: 90, value: 10 }
+  bandwidth_kbps:
+    - { offset_sec: 0, value: 2000 }
+    - { offset_sec: 15, value: 20000 }
+    - { offset_sec: 75, value: 20000 }
+    - { offset_sec: 90, value: 2000 }
+
+ntnkit:
+  max_payload_bytes: 1200
+  max_retries_per_window: 3
+  daily_byte_budget: 50000

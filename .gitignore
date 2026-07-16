@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*
+coverage/
+*.db
+*.db-journal
+outbox/
+
+# Internal design / planning docs (not for public tree)
+docs/

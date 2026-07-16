@@ -1,0 +1,17 @@
+{
+  "name": "@ntnkit/example-ci-smoke",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prestart": "pnpm --filter @ntnkit/core run build && pnpm --filter @ntnkit/sdk run build",
+    "start": "tsx index.ts"
+  },
+  "dependencies": {
+    "@ntnkit/core": "workspace:*",
+    "@ntnkit/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.4"
+  }
+}
