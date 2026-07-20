@@ -66,7 +66,13 @@ jobs:
         run: pnpm build
 
       - name: Install netns tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq iproute2 iptables >/dev/null
+        run: |
+          # Hosted runners ship flaky third-party apt sources (Chrome/Microsoft)
+          # that fail apt-get update mid-mirror-sync. We only need Ubuntu packages.
+          sudo grep -rlE 'dl\.google\.com|packages\.microsoft\.com' \
+            /etc/apt/sources.list.d/ 2>/dev/null | sudo xargs -r rm -f || true
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq iproute2 iptables >/dev/null
 
       - name: Build ntnbox
         working-directory: ntn-in-a-box
