@@ -7,19 +7,38 @@
  * Live HTTP against a local echo server (no external deps):
  *   SMOKE_LIVE=1 pnpm --filter @ntnkit/example-ci-smoke start
  *
+ * Simulated window (no ntnbox):
+ *   NTNKIT_SIMULATE_WINDOW=1 pnpm --filter @ntnkit/example-ci-smoke start
+ *
  * Under ntn-in-a-box (from ntn-in-a-box repo root):
- *   ntnbox run --profile ../ntnkit/test/profiles/leo_pass_90s.yaml -- \
- *     pnpm --dir ../ntnkit/examples/ci-smoke start
+ *   ./ntnbox run --addr 0.0.0.0:18080 \
+ *     --profile ../ntnkit/test/profiles/ci_gap.yaml -- \
+ *     env NTNBOX_API_BASE=http://10.200.0.1:18080 \
+ *     ../ntnkit/scripts/ntnbox-ci-smoke.sh
  */
 import { createServer, type Server } from "node:http";
-import { DeliveryMode, LinkState, Priority } from "@ntnkit/core";
-import { connect, httpTransport } from "@ntnkit/sdk";
+import {
+  DEFAULT_POLICY,
+  DeliveryMode,
+  DeliveryStage,
+  LinkState,
+  Priority,
+} from "@ntnkit/core";
+import {
+  connect,
+  httpTransport,
+  ntnboxLinkState,
+  type Transport,
+} from "@ntnkit/sdk";
 
 const simulateWindow =
   process.env.NTNKIT_SIMULATE_WINDOW === "1" ||
   process.env.NTNKIT_SIMULATE_WINDOW === "true";
 const liveHttp =
   process.env.SMOKE_LIVE === "1" || process.env.SMOKE_LIVE === "true";
+const ntnboxApiBase = process.env.NTNBOX_API_BASE?.trim() || undefined;
+const ntnboxDeviceId = process.env.NTNBOX_DEVICE_ID?.trim() || "sandbox-0";
+const waitTimeoutMs = Number(process.env.NTNKIT_SMOKE_TIMEOUT_MS ?? 120_000);
 
 async function startEchoServer(): Promise<{ server: Server; url: string }> {
   const server = createServer((req, res) => {
@@ -39,7 +58,185 @@ async function startEchoServer(): Promise<{ server: Server; url: string }> {
   return { server, url: `http://127.0.0.1:${addr.port}/` };
 }
 
-async function main(): Promise<void> {
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForLinkState(
+  getState: () => Promise<LinkState>,
+  want: LinkState,
+  label: string,
+): Promise<void> {
+  const deadline = Date.now() + waitTimeoutMs;
+  while (Date.now() < deadline) {
+    const state = await getState();
+    if (state === want) return;
+    await sleep(200);
+  }
+  throw new Error(
+    `timeout waiting for ${label} (${want}) after ${waitTimeoutMs}ms`,
+  );
+}
+
+async function waitForDurableGap(
+  getState: () => Promise<LinkState>,
+  apiBase: string,
+  deviceId: string,
+): Promise<void> {
+  const minGapSec = 5;
+  const deadline = Date.now() + waitTimeoutMs;
+  while (Date.now() < deadline) {
+    const state = await getState();
+    if (state !== LinkState.Constrained) {
+      await sleep(200);
+      continue;
+    }
+
+    const res = await fetch(
+      `${apiBase.replace(/\/+$/, "")}/devices/${encodeURIComponent(deviceId)}/condition`,
+      { headers: { accept: "application/json" } },
+    );
+    if (!res.ok) {
+      await sleep(200);
+      continue;
+    }
+    const body = (await res.json()) as {
+      in_coverage?: unknown;
+      until_next_transition_sec?: unknown;
+    };
+    if (
+      body.in_coverage === false &&
+      typeof body.until_next_transition_sec === "number" &&
+      body.until_next_transition_sec >= minGapSec
+    ) {
+      return;
+    }
+    await sleep(200);
+  }
+  throw new Error(
+    `timeout waiting for durable coverage gap after ${waitTimeoutMs}ms`,
+  );
+}
+
+function countingTransport(inner: Transport): {
+  transport: Transport;
+  sendAttempts: () => number;
+} {
+  let sendAttempts = 0;
+  return {
+    sendAttempts: () => sendAttempts,
+    transport: {
+      name: inner.name,
+      getLinkState: () => inner.getLinkState(),
+      async send(message) {
+        sendAttempts += 1;
+        return inner.send(message);
+      },
+    },
+  };
+}
+
+async function runNtnboxAcceptance(): Promise<void> {
+  const apiBase = ntnboxApiBase!;
+  const echo = await startEchoServer();
+  const link = ntnboxLinkState({
+    apiBaseUrl: apiBase,
+    deviceId: ntnboxDeviceId,
+    pollIntervalMs: 500,
+  });
+  const delivered: string[] = [];
+
+  try {
+    const base = httpTransport({
+      url: echo.url,
+      linkState: () => link.getLinkState(),
+      timeoutMs: 5_000,
+    });
+    const { transport, sendAttempts } = countingTransport(base);
+    const client = await connect({
+      budget: { dailyBytes: 50_000 },
+      transport,
+      onStatus: (event) => {
+        if (event.stage === DeliveryStage.Delivered) {
+          delivered.push(event.id);
+        }
+      },
+    });
+
+    try {
+      await waitForDurableGap(
+        () => link.getLinkState(),
+        apiBase,
+        ntnboxDeviceId,
+      );
+
+      const payload = new TextEncoder().encode(
+        JSON.stringify({ hello: "ntnkit", ts: Date.now() }),
+      );
+      await client.send({
+        payload,
+        priority: Priority.Normal,
+        delivery: DeliveryMode.NextWindow,
+        dedupKey: "ci-smoke-ntnbox",
+      });
+
+      if (client.stats().outbox.depth !== 1) {
+        throw new Error(
+          `expected 1 queued message while closed, got ${client.stats().outbox.depth}`,
+        );
+      }
+      if (sendAttempts() !== 0) {
+        throw new Error(
+          `expected 0 send attempts while closed, got ${sendAttempts()}`,
+        );
+      }
+
+      await waitForLinkState(
+        () => link.getLinkState(),
+        LinkState.SatelliteWindowOpen,
+        "coverage open",
+      );
+
+      const { sent } = await client.flush();
+      if (sent !== 1) {
+        throw new Error(`expected flush to send 1 message, sent ${sent}`);
+      }
+      if (client.stats().outbox.depth !== 0) {
+        throw new Error("expected empty outbox after delivery");
+      }
+      if (delivered.length !== 1) {
+        throw new Error(`expected 1 delivered event, got ${delivered.length}`);
+      }
+      if (sendAttempts() < 1) {
+        throw new Error("expected at least one transport send after open");
+      }
+      if (sendAttempts() > DEFAULT_POLICY.maxAttemptsPerWindow) {
+        throw new Error(
+          `send attempts ${sendAttempts()} exceed maxAttemptsPerWindow ${DEFAULT_POLICY.maxAttemptsPerWindow}`,
+        );
+      }
+
+      console.log(
+        JSON.stringify({
+          ok: true,
+          mode: "ntnbox",
+          sendAttempts: sendAttempts(),
+          delivered: delivered.length,
+        }),
+      );
+      console.log("ci-smoke: ok");
+    } finally {
+      await client.close();
+    }
+  } finally {
+    await link.close();
+    await new Promise<void>((resolve, reject) => {
+      echo.server.close((err) => (err ? reject(err) : resolve()));
+    });
+  }
+}
+
+async function runLocalSmoke(): Promise<void> {
   let linkState = simulateWindow
     ? LinkState.Constrained
     : LinkState.Terrestrial;
@@ -108,6 +305,14 @@ async function main(): Promise<void> {
       });
     }
   }
+}
+
+async function main(): Promise<void> {
+  if (ntnboxApiBase) {
+    await runNtnboxAcceptance();
+    return;
+  }
+  await runLocalSmoke();
 }
 
 main().catch((err) => {

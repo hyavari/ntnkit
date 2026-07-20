@@ -27,3 +27,59 @@ jobs:
       - run: pnpm --filter @ntnkit/example-ci-smoke start
       - run: NTNKIT_SIMULATE_WINDOW=1 pnpm --filter @ntnkit/example-ci-smoke start
       - run: SMOKE_LIVE=1 pnpm --filter @ntnkit/example-ci-smoke start
+
+  ntnbox:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ntnkit
+        uses: actions/checkout@v4
+        with:
+          path: ntnkit
+
+      - name: Checkout ntn-in-a-box
+        uses: actions/checkout@v4
+        with:
+          repository: hyavari/ntn-in-a-box
+          ref: 208637b566c08dae210527640401b8638d3b66ef
+          path: ntn-in-a-box
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: ntnkit/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: ntnkit/pnpm-lock.yaml
+
+      - name: Install Node dependencies
+        working-directory: ntnkit
+        run: pnpm install --frozen-lockfile
+
+      - name: Build ntnkit packages
+        working-directory: ntnkit
+        run: pnpm build
+
+      - name: Install netns tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq iproute2 iptables >/dev/null
+
+      - name: Build ntnbox
+        working-directory: ntn-in-a-box
+        run: |
+          go build -o /tmp/ntnbox ./cmd/ntnbox/
+          sudo cp /tmp/ntnbox /usr/local/bin/ntnbox
+
+      - name: Run ci-smoke under ntnbox profile
+        working-directory: ntnkit
+        run: |
+          sudo env "PATH=$PATH" ntnbox run \
+            --addr 0.0.0.0:18080 \
+            --profile test/profiles/ci_gap.yaml \
+            -- \
+            env NTNBOX_API_BASE=http://10.200.0.1:18080 \
+            ./scripts/ntnbox-ci-smoke.sh

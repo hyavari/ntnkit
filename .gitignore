@@ -11,3 +11,4 @@ outbox/
 
 # Internal design / planning docs (not for public tree)
 docs/
+.pnpm-store/

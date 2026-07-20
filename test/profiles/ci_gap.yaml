@@ -1,0 +1,26 @@
+name: ci_gap
+description: >
+  Short deterministic coverage gap for ntnkit CI. Timing is illustrative
+  for a fast PR loop (20s window / 60s period), not a real constellation
+  revisit. Curve values are simplified LEO-class placeholders.
+
+schedule:
+  mode: periodic
+  period_sec: 60
+  window_sec: 20
+  lookahead_sec: 5
+
+curves:
+  delay_ms:
+    - { offset_sec: 0, value: 100 }
+  jitter_ms:
+    - { offset_sec: 0, value: 10 }
+  loss_pct:
+    - { offset_sec: 0, value: 1 }
+  bandwidth_kbps:
+    - { offset_sec: 0, value: 5000 }
+
+ntnkit:
+  max_payload_bytes: 1200
+  max_retries_per_window: 3
+  daily_byte_budget: 50000

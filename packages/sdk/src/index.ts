@@ -7,6 +7,11 @@ export {
 } from "./client.js";
 export { InMemoryOutbox, type Outbox, type OutboxStats } from "./outbox.js";
 export { httpTransport } from "./http.js";
+export {
+  ntnboxLinkState,
+  type NtnboxLinkState,
+  type NtnboxLinkStateOptions,
+} from "./ntnbox-link-state.js";
 export type {
   Transport,
   SendResult,

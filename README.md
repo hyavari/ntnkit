@@ -46,7 +46,7 @@ flowchart TB
 | Package | Role |
 |---------|------|
 | [`@ntnkit/core`](packages/core) | Pure logic: message model, `shouldSend`, backoff, `ByteBudget` |
-| [`@ntnkit/sdk`](packages/sdk) | `connect()` client, outbox, pluggable `Transport`, `httpTransport` |
+| [`@ntnkit/sdk`](packages/sdk) | `connect()` client, outbox, pluggable `Transport`, `httpTransport`, `ntnboxLinkState` |
 | [`@ntnkit/scan`](packages/scan) | Static readiness rules + `ntnkit-scan` CLI for CI |
 
 **Design rules (v1):** tiny payloads by default; async-first (no sub-second RTT assumption); hybrid terrestrial + NTN; pluggable transports (core never imports modem SDKs); testable under ntn-in-a-box profiles.
@@ -164,12 +164,25 @@ pnpm --filter @ntnkit/example-messenger start
 
 ### With ntn-in-a-box
 
-Shape the path like a LEO pass, then run the smoke example (from the ntn-in-a-box repo root):
+Run the smoke example under a short coverage-gap profile. The API must be
+reachable from the shaped network namespace via the host veth gateway:
 
 ```bash
-ntnbox run --profile ../ntnkit/test/profiles/leo_pass_90s.yaml -- \
-  pnpm --dir ../ntnkit/examples/ci-smoke start
+# From the ntn-in-a-box repo root
+# Linux: native netns. macOS: Docker proxy (rebuild image once: make docker)
+./ntnbox run --addr 0.0.0.0:18080 \
+  --profile ../ntnkit/test/profiles/ci_gap.yaml -- \
+  env NTNBOX_API_BASE=http://10.200.0.1:18080 \
+  ../ntnkit/scripts/ntnbox-ci-smoke.sh
 ```
+
+On macOS the Docker image provides Linux Node/pnpm and bind-mounts the
+ntnkit tree (with a Linux `node_modules` volume). First run may install
+deps inside that volume.
+
+`NTNBOX_API_BASE` selects the real ntnbox link-state path (no
+`NTNKIT_SIMULATE_WINDOW`). Keep `ci_gap.yaml` for local demos that must finish
+under the default 120s smoke timeout.
 
 ### Scan a payload
 
@@ -194,7 +207,7 @@ Exit `0` = no critical findings, `1` = critical findings, `2` = usage/error.
 ```
 packages/
   core/     # types, policy, budget
-  sdk/      # client, outbox, http transport
+  sdk/      # client, outbox, http transport, ntnbox link-state
   scan/     # readiness CLI
 examples/
   ci-smoke/
