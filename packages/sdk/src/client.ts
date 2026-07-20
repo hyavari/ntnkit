@@ -12,7 +12,8 @@ import {
   type PolicyConfig,
   createMessage,
 } from "@ntnkit/core";
-import { InMemoryOutbox, type Outbox } from "./outbox.js";
+import { InMemoryOutbox, type Outbox, type OutboxStats } from "./outbox.js";
+import type { AttemptState, DurableStore } from "./store.js";
 import type { Transport } from "./transport.js";
 
 export interface DeliveryStatusEvent {
@@ -27,8 +28,14 @@ export interface ClientConfig {
   /**
    * Outbox instance. Must not be shared across clients — each `connect()`
    * owns exclusive access until `close()`.
+   * Do not set together with `store`.
    */
   outbox?: Outbox;
+  /**
+   * Durable store (outbox + attempts + budget). Do not set together with
+   * `outbox`.
+   */
+  store?: DurableStore;
   /**
    * Delivery-stage notifications.
    *
@@ -63,26 +70,26 @@ export interface FlushResult {
 export interface Client {
   send(input: MessageInput): Promise<string>;
   flush(): Promise<FlushResult>;
-  stats(): {
-    outbox: ReturnType<Outbox["stats"]>;
+  stats(): Promise<{
+    outbox: OutboxStats;
     budget: ReturnType<ByteBudget["snapshot"]>;
-  };
+  }>;
   /** Release exclusive outbox ownership and reject further operations. */
   close(): Promise<void>;
 }
 
 type DeliverOutcome = "sent" | "deferred" | "failed";
 
-interface AttemptState {
-  attempts: number;
-  nextAllowedAt: number;
-}
-
 const claimedOutboxes = new WeakSet<Outbox>();
 
 export async function connect(config: ClientConfig): Promise<Client> {
-  const ownsExternalOutbox = config.outbox !== undefined;
-  const outbox = config.outbox ?? new InMemoryOutbox();
+  if (config.outbox && config.store) {
+    throw new Error("ClientConfig.outbox and ClientConfig.store are mutually exclusive");
+  }
+
+  const store = config.store;
+  const ownsExternalOutbox = config.outbox !== undefined || store !== undefined;
+  const outbox = store?.outbox ?? config.outbox ?? new InMemoryOutbox();
   if (ownsExternalOutbox) {
     if (claimedOutboxes.has(outbox)) {
       throw new Error(
@@ -105,6 +112,31 @@ export async function connect(config: ClientConfig): Promise<Client> {
   let closed = false;
   /** Status events queued while the lock is held; flushed after release. */
   const pendingStatus: DeliveryStatusEvent[] = [];
+
+  try {
+    if (store) {
+      const budgetState = await store.loadBudget();
+      if (budgetState) {
+        budget.restore(budgetState);
+      }
+      const durable = budget.durableState();
+      if (
+        !budgetState ||
+        budgetState.dayKey !== durable.dayKey ||
+        budgetState.usedBytes !== durable.usedBytes
+      ) {
+        await store.saveBudget(durable);
+      }
+      for (const [id, state] of await store.loadAttempts()) {
+        attempts.set(id, state);
+      }
+    }
+  } catch (err) {
+    if (ownsExternalOutbox) {
+      claimedOutboxes.delete(outbox);
+    }
+    throw err;
+  }
 
   function emit(id: string, stage: DeliveryStage): void {
     pendingStatus.push({ id, stage });
@@ -134,9 +166,35 @@ export async function connect(config: ClientConfig): Promise<Client> {
     }
   }
 
-  function emitExpired(now = Date.now()): void {
-    for (const msg of outbox.pruneExpired(now)) {
-      clearAttempt(msg.id);
+  async function persistBudget(): Promise<void> {
+    if (store) {
+      await store.saveBudget(budget.durableState());
+    }
+  }
+
+  async function persistAttempt(id: string, state: AttemptState): Promise<void> {
+    if (store) {
+      await store.saveAttempt(id, state);
+    }
+  }
+
+  async function clearAttempt(id: string): Promise<void> {
+    attempts.delete(id);
+    if (store) {
+      await store.clearAttempt(id);
+    }
+  }
+
+  async function clearAllAttempts(): Promise<void> {
+    attempts.clear();
+    if (store) {
+      await store.clearAllAttempts();
+    }
+  }
+
+  async function emitExpired(now = Date.now()): Promise<void> {
+    for (const msg of await outbox.pruneExpired(now)) {
+      await clearAttempt(msg.id);
       emit(msg.id, DeliveryStage.Expired);
     }
   }
@@ -157,49 +215,50 @@ export async function connect(config: ClientConfig): Promise<Client> {
     }
   }
 
-  function onLinkState(linkState: LinkState): void {
+  async function onLinkState(linkState: LinkState): Promise<void> {
+    // Only clear on a real closed→open edge. null means unknown (e.g. just
+    // after restart hydrate) and must not wipe persisted attempt budgets.
     if (
       linkState === LinkState.SatelliteWindowOpen &&
+      lastLinkState !== null &&
       lastLinkState !== LinkState.SatelliteWindowOpen
     ) {
-      attempts.clear();
+      await clearAllAttempts();
     }
     lastLinkState = linkState;
   }
 
-  function clearAttempt(id: string): void {
-    attempts.delete(id);
-  }
-
-  function markDelivered(message: Message): void {
-    outbox.remove(message.id);
+  async function markDelivered(message: Message): Promise<void> {
+    await outbox.remove(message.id);
     if (message.dedupKey) {
-      const staleId = outbox.removeByDedupKey(message.dedupKey);
-      if (staleId) clearAttempt(staleId);
+      const staleId = await outbox.removeByDedupKey(message.dedupKey);
+      if (staleId) await clearAttempt(staleId);
     }
-    clearAttempt(message.id);
+    await clearAttempt(message.id);
     emit(message.id, DeliveryStage.Delivered);
   }
 
-  function chargeBudget(
+  async function chargeBudget(
     bytes: number,
     critical: boolean,
     delivered: boolean,
-  ): void {
+  ): Promise<void> {
     if (delivered) {
       // Critical may overspend; non-critical was gated by canSpend above.
       budget.spend(bytes, new Date(), critical);
+      await persistBudget();
       return;
     }
     if (budget.countFailedAttempts) {
       // Airtime model: always allow charging past the cap.
       budget.spend(bytes, new Date(), true);
+      await persistBudget();
     }
   }
 
   async function tryDeliver(message: Message): Promise<DeliverOutcome> {
     const linkState = await config.transport.getLinkState();
-    onLinkState(linkState);
+    await onLinkState(linkState);
 
     const state = attempts.get(message.id);
     const inWindow = linkState === LinkState.SatelliteWindowOpen;
@@ -246,18 +305,20 @@ export async function connect(config: ClientConfig): Promise<Client> {
     if (transmitted) {
       emit(message.id, DeliveryStage.Transmitted);
     }
-    chargeBudget(bytes, critical, result.delivered);
+    await chargeBudget(bytes, critical, result.delivered);
 
     if (result.delivered) {
-      markDelivered(message);
+      await markDelivered(message);
       return "sent";
     }
 
     const nextAttempts = (state?.attempts ?? 0) + 1;
-    attempts.set(message.id, {
+    const next: AttemptState = {
       attempts: nextAttempts,
       nextAllowedAt: Date.now() + satelliteBackoffMs(nextAttempts - 1, policy),
-    });
+    };
+    attempts.set(message.id, next);
+    await persistAttempt(message.id, next);
     return "failed";
   }
 
@@ -265,13 +326,13 @@ export async function connect(config: ClientConfig): Promise<Client> {
     async send(input: MessageInput): Promise<string> {
       return withLock(async () => {
         assertOpen();
-        emitExpired();
+        await emitExpired();
         const message = createMessage(input);
         // Store-and-forward: always enqueue first (including Immediate) so
         // Accepted means persisted. Success removes via markDelivered; if
         // tryDeliver throws, the message remains queued for a later flush.
-        const replacedId = outbox.enqueue(message);
-        if (replacedId) clearAttempt(replacedId);
+        const replacedId = await outbox.enqueue(message);
+        if (replacedId) await clearAttempt(replacedId);
         emit(message.id, DeliveryStage.Accepted);
 
         await tryDeliver(message);
@@ -282,20 +343,20 @@ export async function connect(config: ClientConfig): Promise<Client> {
     async flush(): Promise<FlushResult> {
       return withLock(async () => {
         assertOpen();
-        emitExpired();
+        await emitExpired();
         let sent = 0;
         let deferred = 0;
         let failed = 0;
 
-        const queue = outbox.list();
-        for (const id of attempts.keys()) {
-          if (!outbox.has(id)) clearAttempt(id);
+        const queue = await outbox.list();
+        for (const id of [...attempts.keys()]) {
+          if (!(await outbox.has(id))) await clearAttempt(id);
         }
 
         // Continue after failures so later Critical/queued messages still get
         // an attempt in the same pass (short satellite windows).
         for (const message of queue) {
-          if (!outbox.has(message.id)) {
+          if (!(await outbox.has(message.id))) {
             deferred += 1;
             continue;
           }
@@ -322,11 +383,11 @@ export async function connect(config: ClientConfig): Promise<Client> {
       });
     },
 
-    stats() {
+    async stats() {
       assertOpen();
       // Does not prune/emit expired — that runs under the lock on send/flush.
       return {
-        outbox: outbox.stats(),
+        outbox: await outbox.stats(),
         budget: budget.snapshot(),
       };
     },
@@ -338,6 +399,9 @@ export async function connect(config: ClientConfig): Promise<Client> {
         attempts.clear();
         if (ownsExternalOutbox) {
           claimedOutboxes.delete(outbox);
+        }
+        if (store) {
+          await store.close();
         }
       });
     },

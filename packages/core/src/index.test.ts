@@ -118,6 +118,20 @@ describe("ByteBudget", () => {
     expect(snap.remainingBytes).toBe(0);
     expect(snap.overspentBytes).toBe(5);
   });
+
+  it("restore hydrates same-day usage and rolls on day change", () => {
+    const budget = new ByteBudget({ dailyBytes: 100 });
+    budget.restore({ dayKey: "2026-01-01", usedBytes: 40 }, new Date("2026-01-01T12:00:00Z"));
+    expect(budget.durableState(new Date("2026-01-01T12:00:00Z"))).toEqual({
+      dayKey: "2026-01-01",
+      usedBytes: 40,
+    });
+    budget.restore({ dayKey: "2026-01-01", usedBytes: 40 }, new Date("2026-01-02T01:00:00Z"));
+    expect(budget.durableState(new Date("2026-01-02T01:00:00Z"))).toEqual({
+      dayKey: "2026-01-02",
+      usedBytes: 0,
+    });
+  });
 });
 
 describe("shouldSend", () => {

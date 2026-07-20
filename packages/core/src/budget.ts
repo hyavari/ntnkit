@@ -55,6 +55,30 @@ export class ByteBudget {
     };
   }
 
+  /**
+   * Restore persisted counters. If `dayKey` is not today's UTC day, usage
+   * resets to 0 for the current day.
+   */
+  restore(
+    state: { dayKey: string; usedBytes: number },
+    now = new Date(),
+  ): void {
+    const key = utcDayKey(now);
+    if (state.dayKey !== key) {
+      this.dayKey = key;
+      this.usedBytes = 0;
+      return;
+    }
+    this.dayKey = state.dayKey;
+    this.usedBytes = state.usedBytes;
+  }
+
+  /** Uncapped counters for durable persistence (may exceed dailyBytes). */
+  durableState(now = new Date()): { dayKey: string; usedBytes: number } {
+    this.rollDayIfNeeded(now);
+    return { dayKey: this.dayKey, usedBytes: this.usedBytes };
+  }
+
   private rollDayIfNeeded(now: Date): void {
     const key = utcDayKey(now);
     if (key !== this.dayKey) {

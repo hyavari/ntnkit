@@ -28,7 +28,7 @@ describe("connect", () => {
     });
 
     expect(calls).toEqual(["ping"]);
-    expect(client.stats().outbox.depth).toBe(0);
+    expect((await client.stats()).outbox.depth).toBe(0);
   });
 
   it("queues for next window when constrained", async () => {
@@ -49,13 +49,13 @@ describe("connect", () => {
       priority: Priority.High,
     });
 
-    expect(client.stats().outbox.depth).toBe(1);
+    expect((await client.stats()).outbox.depth).toBe(1);
 
     link = LinkState.SatelliteWindowOpen;
     const result = await client.flush();
     expect(result.sent).toBe(1);
     expect(result.deferred).toBe(0);
-    expect(client.stats().outbox.depth).toBe(0);
+    expect((await client.stats()).outbox.depth).toBe(0);
   });
 
   it("skips deferred messages and continues flush", async () => {
@@ -84,7 +84,7 @@ describe("connect", () => {
       priority: Priority.Low,
     });
 
-    expect(client.stats().outbox.depth).toBe(2);
+    expect((await client.stats()).outbox.depth).toBe(2);
 
     link = LinkState.SatelliteWindowOpen;
     const result = await client.flush();
@@ -92,7 +92,7 @@ describe("connect", () => {
     expect(result.deferred).toBe(1);
     expect(result.failed).toBe(0);
     expect(sent).toEqual(["ok"]);
-    expect(client.stats().outbox.depth).toBe(1);
+    expect((await client.stats()).outbox.depth).toBe(1);
   });
 
   it("delivers critical even when budget is exhausted", async () => {
@@ -113,7 +113,7 @@ describe("connect", () => {
       payload: new TextEncoder().encode("abc"),
       delivery: DeliveryMode.Immediate,
     });
-    expect(client.stats().budget.remainingBytes).toBe(0);
+    expect((await client.stats()).budget.remainingBytes).toBe(0);
 
     await client.send({
       payload: new TextEncoder().encode("sos"),
@@ -122,7 +122,7 @@ describe("connect", () => {
     });
 
     expect(sent).toEqual(["abc", "sos"]);
-    expect(client.stats().outbox.depth).toBe(0);
+    expect((await client.stats()).outbox.depth).toBe(0);
   });
 
   it("counts airtime on failed send attempts by default", async () => {
@@ -143,8 +143,8 @@ describe("connect", () => {
       delivery: DeliveryMode.Immediate,
     });
 
-    expect(client.stats().budget.usedBytes).toBe(4);
-    expect(client.stats().outbox.depth).toBe(1);
+    expect((await client.stats()).budget.usedBytes).toBe(4);
+    expect((await client.stats()).outbox.depth).toBe(1);
   });
 
   it("can disable charging failed attempts", async () => {
@@ -165,8 +165,8 @@ describe("connect", () => {
       delivery: DeliveryMode.Immediate,
     });
 
-    expect(client.stats().budget.usedBytes).toBe(0);
-    expect(client.stats().budget.remainingBytes).toBe(10);
+    expect((await client.stats()).budget.usedBytes).toBe(0);
+    expect((await client.stats()).budget.remainingBytes).toBe(10);
   });
 
   it("failed attempts can exhaust budget and block non-critical", async () => {
@@ -186,17 +186,17 @@ describe("connect", () => {
       payload: new TextEncoder().encode("abcd"),
       delivery: DeliveryMode.Immediate,
     });
-    expect(client.stats().budget.remainingBytes).toBe(0);
+    expect((await client.stats()).budget.remainingBytes).toBe(0);
 
-    const before = client.stats().outbox.depth;
+    const before = (await client.stats()).outbox.depth;
     await client.send({
       payload: new TextEncoder().encode("xy"),
       delivery: DeliveryMode.Immediate,
       priority: Priority.Normal,
     });
     // Second message deferred (budget) and queued — no further send charged.
-    expect(client.stats().outbox.depth).toBe(before + 1);
-    expect(client.stats().budget.usedBytes).toBe(4);
+    expect((await client.stats()).outbox.depth).toBe(before + 1);
+    expect((await client.stats()).budget.usedBytes).toBe(4);
   });
 
   it("evicts prior outbox entry when a deduped send succeeds", async () => {
@@ -216,7 +216,7 @@ describe("connect", () => {
       delivery: DeliveryMode.NextWindow,
       dedupKey: "same",
     });
-    expect(client.stats().outbox.depth).toBe(1);
+    expect((await client.stats()).outbox.depth).toBe(1);
 
     link = LinkState.Terrestrial;
     await client.send({
@@ -225,7 +225,7 @@ describe("connect", () => {
       dedupKey: "same",
     });
 
-    expect(client.stats().outbox.depth).toBe(0);
+    expect((await client.stats()).outbox.depth).toBe(0);
   });
 
   it("refreshes link state between flush messages", async () => {
@@ -254,14 +254,14 @@ describe("connect", () => {
       delivery: DeliveryMode.NextWindow,
       priority: Priority.Low,
     });
-    expect(client.stats().outbox.depth).toBe(2);
+    expect((await client.stats()).outbox.depth).toBe(2);
 
     link = LinkState.SatelliteWindowOpen;
     const result = await client.flush();
     expect(sent).toEqual(["a"]);
     expect(result.sent).toBe(1);
     expect(result.deferred).toBe(1);
-    expect(client.stats().outbox.depth).toBe(1);
+    expect((await client.stats()).outbox.depth).toBe(1);
   });
 
   it("serializes concurrent flush calls", async () => {
@@ -295,7 +295,7 @@ describe("connect", () => {
     const [r1, r2] = await Promise.all([client.flush(), client.flush()]);
     expect(r1.sent + r2.sent).toBe(2);
     expect(maxInFlight).toBe(1);
-    expect(client.stats().outbox.depth).toBe(0);
+    expect((await client.stats()).outbox.depth).toBe(0);
   });
 
   it("continues flush after failure so later messages still attempt", async () => {
@@ -336,7 +336,7 @@ describe("connect", () => {
     }
     // Attempt caps + backoff limit further tries in-window.
     expect(calls).toBeLessThanOrEqual(4);
-    expect(client.stats().outbox.depth).toBe(2);
+    expect((await client.stats()).outbox.depth).toBe(2);
   });
 
   it("resets attempt cap when a new satellite window opens", async () => {
@@ -435,12 +435,12 @@ describe("connect", () => {
         createdAt: now,
       });
       expect(calls).toBe(1);
-      expect(client.stats().outbox.depth).toBe(1);
+      expect((await client.stats()).outbox.depth).toBe(1);
 
       vi.setSystemTime(new Date(now.getTime() + 2000));
       const result = await client.flush();
       expect(result.sent).toBe(0);
-      expect(client.stats().outbox.depth).toBe(0);
+      expect((await client.stats()).outbox.depth).toBe(0);
       // Expired — no retry send.
       expect(calls).toBe(1);
     } finally {
@@ -474,15 +474,15 @@ describe("connect", () => {
       priority: Priority.Critical,
     });
     expect(sent).toEqual(["ab"]);
-    expect(client.stats().outbox.depth).toBe(1);
+    expect((await client.stats()).outbox.depth).toBe(1);
   });
 });
 
 describe("InMemoryOutbox", () => {
-  it("enqueue list remove and stats track depth and age", () => {
+  it("enqueue list remove and stats track depth and age", async () => {
     const outbox = new InMemoryOutbox();
     const createdAt = new Date(Date.now() - 5_000);
-    outbox.enqueue({
+    await outbox.enqueue({
       id: "1",
       payload: new TextEncoder().encode("a"),
       priority: Priority.Normal,
@@ -490,16 +490,16 @@ describe("InMemoryOutbox", () => {
       createdAt,
       delivery: DeliveryMode.Immediate,
     });
-    expect(outbox.list()).toHaveLength(1);
-    expect(outbox.remove("1")).toBe(true);
-    expect(outbox.has("1")).toBe(false);
-    expect(outbox.stats().depth).toBe(0);
-    expect(outbox.stats().oldestAgeMs).toBeNull();
+    expect(await outbox.list()).toHaveLength(1);
+    expect(await outbox.remove("1")).toBe(true);
+    expect(await outbox.has("1")).toBe(false);
+    expect((await outbox.stats()).depth).toBe(0);
+    expect((await outbox.stats()).oldestAgeMs).toBeNull();
   });
 
-  it("pruneExpired returns and drops TTL-elapsed messages", () => {
+  it("pruneExpired returns and drops TTL-elapsed messages", async () => {
     const outbox = new InMemoryOutbox();
-    outbox.enqueue({
+    await outbox.enqueue({
       id: "old",
       payload: new TextEncoder().encode("a"),
       priority: Priority.Normal,
@@ -507,7 +507,7 @@ describe("InMemoryOutbox", () => {
       createdAt: new Date(Date.now() - 1_000),
       delivery: DeliveryMode.Immediate,
     });
-    outbox.enqueue({
+    await outbox.enqueue({
       id: "fresh",
       payload: new TextEncoder().encode("b"),
       priority: Priority.Normal,
@@ -515,18 +515,18 @@ describe("InMemoryOutbox", () => {
       createdAt: new Date(),
       delivery: DeliveryMode.Immediate,
     });
-    const expired = outbox.pruneExpired();
+    const expired = await outbox.pruneExpired();
     expect(expired.map((m) => m.id)).toEqual(["old"]);
-    expect(outbox.has("old")).toBe(false);
-    expect(outbox.has("fresh")).toBe(true);
-    expect(outbox.stats().oldestAgeMs).toBeGreaterThanOrEqual(0);
+    expect(await outbox.has("old")).toBe(false);
+    expect(await outbox.has("fresh")).toBe(true);
+    expect((await outbox.stats()).oldestAgeMs).toBeGreaterThanOrEqual(0);
   });
 
-  it("list orders by priority then age", () => {
+  it("list orders by priority then age", async () => {
     const outbox = new InMemoryOutbox();
     const older = new Date(Date.now() - 2_000);
     const newer = new Date(Date.now() - 1_000);
-    outbox.enqueue({
+    await outbox.enqueue({
       id: "low",
       payload: new TextEncoder().encode("a"),
       priority: Priority.Low,
@@ -534,7 +534,7 @@ describe("InMemoryOutbox", () => {
       createdAt: older,
       delivery: DeliveryMode.Immediate,
     });
-    outbox.enqueue({
+    await outbox.enqueue({
       id: "high",
       payload: new TextEncoder().encode("b"),
       priority: Priority.High,
@@ -542,12 +542,12 @@ describe("InMemoryOutbox", () => {
       ttlMs: 60_000,
       delivery: DeliveryMode.Immediate,
     });
-    expect(outbox.list().map((m) => m.id)).toEqual(["high", "low"]);
+    expect((await outbox.list()).map((m) => m.id)).toEqual(["high", "low"]);
   });
 
-  it("removeByDedupKey drops the indexed message", () => {
+  it("removeByDedupKey drops the indexed message", async () => {
     const outbox = new InMemoryOutbox();
-    outbox.enqueue({
+    await outbox.enqueue({
       id: "1",
       payload: new TextEncoder().encode("a"),
       priority: Priority.Normal,
@@ -556,13 +556,13 @@ describe("InMemoryOutbox", () => {
       delivery: DeliveryMode.Immediate,
       dedupKey: "k",
     });
-    expect(outbox.removeByDedupKey("k")).toBe("1");
-    expect(outbox.has("1")).toBe(false);
+    expect(await outbox.removeByDedupKey("k")).toBe("1");
+    expect(await outbox.has("1")).toBe(false);
   });
 
-  it("clears orphaned dedupIndex when message row is already gone", () => {
+  it("clears orphaned dedupIndex when message row is already gone", async () => {
     const outbox = new InMemoryOutbox();
-    outbox.enqueue({
+    await outbox.enqueue({
       id: "1",
       payload: new TextEncoder().encode("a"),
       priority: Priority.Normal,
@@ -575,9 +575,9 @@ describe("InMemoryOutbox", () => {
     (outbox as unknown as { messages: Map<string, unknown> }).messages.delete(
       "1",
     );
-    expect(outbox.removeByDedupKey("k")).toBe("1");
+    expect(await outbox.removeByDedupKey("k")).toBe("1");
     // Re-enqueue with same key must work (index was cleared).
-    outbox.enqueue({
+    await outbox.enqueue({
       id: "2",
       payload: new TextEncoder().encode("b"),
       priority: Priority.Normal,
@@ -586,13 +586,13 @@ describe("InMemoryOutbox", () => {
       delivery: DeliveryMode.Immediate,
       dedupKey: "k",
     });
-    expect(outbox.has("2")).toBe(true);
-    expect(outbox.removeByDedupKey("k")).toBe("2");
+    expect(await outbox.has("2")).toBe(true);
+    expect(await outbox.removeByDedupKey("k")).toBe("2");
   });
 
-  it("repairs dedupIndex when same id is overwritten with a new key", () => {
+  it("repairs dedupIndex when same id is overwritten with a new key", async () => {
     const outbox = new InMemoryOutbox();
-    outbox.enqueue({
+    await outbox.enqueue({
       id: "1",
       payload: new TextEncoder().encode("a"),
       priority: Priority.Normal,
@@ -601,7 +601,7 @@ describe("InMemoryOutbox", () => {
       delivery: DeliveryMode.Immediate,
       dedupKey: "old",
     });
-    outbox.enqueue({
+    await outbox.enqueue({
       id: "1",
       payload: new TextEncoder().encode("b"),
       priority: Priority.Normal,
@@ -610,12 +610,72 @@ describe("InMemoryOutbox", () => {
       delivery: DeliveryMode.Immediate,
       dedupKey: "new",
     });
-    expect(outbox.removeByDedupKey("old")).toBeUndefined();
-    expect(outbox.removeByDedupKey("new")).toBe("1");
+    expect(await outbox.removeByDedupKey("old")).toBeUndefined();
+    expect(await outbox.removeByDedupKey("new")).toBe("1");
   });
 });
 
 describe("connect ownership and status", () => {
+  it("rejects outbox and store together", async () => {
+    const outbox = new InMemoryOutbox();
+    const store = {
+      outbox,
+      async loadAttempts() {
+        return new Map();
+      },
+      async saveAttempt() {},
+      async clearAttempt() {},
+      async clearAllAttempts() {},
+      async loadBudget() {
+        return null;
+      },
+      async saveBudget() {},
+      async close() {},
+    };
+    await expect(
+      connect({
+        outbox,
+        store,
+        transport: {
+          name: "mock",
+          getLinkState: async () => LinkState.Terrestrial,
+          async send() {
+            return { delivered: true };
+          },
+        },
+      }),
+    ).rejects.toThrow("mutually exclusive");
+  });
+
+  it("releases outbox claim if store hydrate fails", async () => {
+    const outbox = new InMemoryOutbox();
+    const transport = {
+      name: "mock",
+      getLinkState: async () => LinkState.Terrestrial,
+      async send() {
+        return { delivered: true };
+      },
+    };
+    const store = {
+      outbox,
+      async loadAttempts() {
+        return new Map();
+      },
+      async saveAttempt() {},
+      async clearAttempt() {},
+      async clearAllAttempts() {},
+      async loadBudget() {
+        throw new Error("hydrate failed");
+      },
+      async saveBudget() {},
+      async close() {},
+    };
+    await expect(connect({ transport, store })).rejects.toThrow("hydrate failed");
+    // Same outbox must be claimable again.
+    const client = await connect({ transport, outbox });
+    await client.close();
+  });
+
   it("rejects sharing one Outbox across two clients", async () => {
     const outbox = new InMemoryOutbox();
     const transport = {
@@ -647,7 +707,7 @@ describe("connect ownership and status", () => {
       payload: new TextEncoder().encode("x"),
       delivery: DeliveryMode.Immediate,
     });
-    expect(client.stats().outbox.depth).toBe(1);
+    expect((await client.stats()).outbox.depth).toBe(1);
   });
 
   it("does not emit Transmitted when transport throws", async () => {
@@ -692,7 +752,7 @@ describe("connect ownership and status", () => {
     });
 
     expect(stages).toEqual([DeliveryStage.Accepted]);
-    expect(client.stats().outbox.depth).toBe(1);
+    expect((await client.stats()).outbox.depth).toBe(1);
   });
 
   it("keeps delivering when onStatus throws", async () => {
@@ -715,7 +775,7 @@ describe("connect ownership and status", () => {
         delivery: DeliveryMode.Immediate,
       }),
     ).resolves.toBeTruthy();
-    expect(client.stats().outbox.depth).toBe(0);
+    expect((await client.stats()).outbox.depth).toBe(0);
   });
 
   it("swallows rejected promises from async onStatus", async () => {
@@ -747,7 +807,7 @@ describe("connect ownership and status", () => {
       ).resolves.toBeTruthy();
       await new Promise((r) => setTimeout(r, 25));
       expect(rejections).toEqual([]);
-      expect(client.stats().outbox.depth).toBe(0);
+      expect((await client.stats()).outbox.depth).toBe(0);
     } finally {
       process.off("unhandledRejection", onUnhandled);
     }
@@ -775,13 +835,13 @@ describe("connect ownership and status", () => {
       ttlMs: 1,
       createdAt: new Date(Date.now() - 1000),
     });
-    expect(client.stats().outbox.depth).toBe(1);
+    expect((await client.stats()).outbox.depth).toBe(1);
 
     link = LinkState.SatelliteWindowOpen;
     const result = await client.flush();
     expect(result.sent).toBe(0);
     expect(stages).toContain(DeliveryStage.Expired);
-    expect(client.stats().outbox.depth).toBe(0);
+    expect((await client.stats()).outbox.depth).toBe(0);
   });
 
   it("allows onStatus to call flush without deadlocking", async () => {
@@ -812,7 +872,7 @@ describe("connect ownership and status", () => {
     });
     await flushed;
 
-    expect(client.stats().outbox.depth).toBe(0);
+    expect((await client.stats()).outbox.depth).toBe(0);
   });
 
   it("keeps Accepted message queued if getLinkState throws after persist", async () => {
@@ -843,11 +903,11 @@ describe("connect ownership and status", () => {
     ).rejects.toThrow("link probe failed");
 
     // Accepted was queued for flush after lock release; message stayed in outbox.
-    expect(client.stats().outbox.depth).toBe(1);
+    expect((await client.stats()).outbox.depth).toBe(1);
     expect(stages).toEqual([DeliveryStage.Accepted]);
 
     await client.flush();
-    expect(client.stats().outbox.depth).toBe(0);
+    expect((await client.stats()).outbox.depth).toBe(0);
   });
 
   it("emits Accepted → Transmitted → Delivered on Immediate success (store-then-send)", async () => {
@@ -859,7 +919,7 @@ describe("connect ownership and status", () => {
         getLinkState: async () => LinkState.Terrestrial,
         async send() {
           // Pre-queued under the lock before transport runs.
-          depthDuringSend = client.stats().outbox.depth;
+          depthDuringSend = (await client.stats()).outbox.depth;
           return { delivered: true };
         },
       },
@@ -872,7 +932,7 @@ describe("connect ownership and status", () => {
     });
 
     expect(depthDuringSend).toBe(1);
-    expect(client.stats().outbox.depth).toBe(0);
+    expect((await client.stats()).outbox.depth).toBe(0);
     expect(stages).toEqual([
       DeliveryStage.Accepted,
       DeliveryStage.Transmitted,
@@ -916,7 +976,7 @@ describe("connect ownership and status", () => {
     await secondDone;
 
     expect(sent).toEqual(["first", "second"]);
-    expect(client.stats().outbox.depth).toBe(0);
+    expect((await client.stats()).outbox.depth).toBe(0);
   });
 
   it("delivers one lock-batch in order before nested fire-and-forget status", async () => {
@@ -1031,7 +1091,7 @@ describe("connect ownership and status", () => {
     ]);
 
     expect(maxInFlight).toBe(1);
-    expect(client.stats().outbox.depth).toBe(0);
+    expect((await client.stats()).outbox.depth).toBe(0);
   });
 });
 

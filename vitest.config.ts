@@ -7,6 +7,7 @@ export default defineConfig({
       "@ntnkit/core": path.resolve(__dirname, "packages/core/src/index.ts"),
       "@ntnkit/sdk": path.resolve(__dirname, "packages/sdk/src/index.ts"),
       "@ntnkit/scan": path.resolve(__dirname, "packages/scan/src/index.ts"),
+      "@ntnkit/sqlite": path.resolve(__dirname, "packages/sqlite/src/index.ts"),
     },
   },
   test: {

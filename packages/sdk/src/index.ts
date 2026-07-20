@@ -6,6 +6,7 @@ export {
   type FlushResult,
 } from "./client.js";
 export { InMemoryOutbox, type Outbox, type OutboxStats } from "./outbox.js";
+export type { AttemptState, DurableStore } from "./store.js";
 export { httpTransport } from "./http.js";
 export {
   ntnboxLinkState,

@@ -180,9 +180,9 @@ async function runNtnboxAcceptance(): Promise<void> {
         dedupKey: "ci-smoke-ntnbox",
       });
 
-      if (client.stats().outbox.depth !== 1) {
+      if ((await client.stats()).outbox.depth !== 1) {
         throw new Error(
-          `expected 1 queued message while closed, got ${client.stats().outbox.depth}`,
+          `expected 1 queued message while closed, got ${(await client.stats()).outbox.depth}`,
         );
       }
       if (sendAttempts() !== 0) {
@@ -201,7 +201,7 @@ async function runNtnboxAcceptance(): Promise<void> {
       if (sent !== 1) {
         throw new Error(`expected flush to send 1 message, sent ${sent}`);
       }
-      if (client.stats().outbox.depth !== 0) {
+      if ((await client.stats()).outbox.depth !== 0) {
         throw new Error("expected empty outbox after delivery");
       }
       if (delivered.length !== 1) {
@@ -276,7 +276,7 @@ async function runLocalSmoke(): Promise<void> {
         dedupKey: "ci-smoke",
       });
 
-      const queued = client.stats().outbox.depth;
+      const queued = (await client.stats()).outbox.depth;
       if (queued !== 1) {
         throw new Error(`expected 1 queued message, got ${queued}`);
       }
@@ -292,7 +292,7 @@ async function runLocalSmoke(): Promise<void> {
         delivery: DeliveryMode.Immediate,
         dedupKey: "ci-smoke",
       });
-      if (client.stats().outbox.depth !== 0) {
+      if ((await client.stats()).outbox.depth !== 0) {
         throw new Error("expected immediate delivery with empty outbox");
       }
     }

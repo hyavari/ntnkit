@@ -9,28 +9,28 @@ export interface OutboxStats {
   oldestAgeMs: number | null;
 }
 
-/** Pluggable outbox storage. */
+/** Pluggable outbox storage (Promise-based for durable adapters). */
 export interface Outbox {
   /** Enqueue; returns id of any *other* message replaced by dedupKey. */
-  enqueue(message: Message): string | undefined;
-  remove(id: string): boolean;
+  enqueue(message: Message): Promise<string | undefined>;
+  remove(id: string): Promise<boolean>;
   /** Remove the message currently indexed by dedupKey; returns its id. */
-  removeByDedupKey(dedupKey: string): string | undefined;
-  has(id: string): boolean;
+  removeByDedupKey(dedupKey: string): Promise<string | undefined>;
+  has(id: string): Promise<boolean>;
   /**
    * Drop expired messages and return them (for status emission).
    * `list` also prunes; `stats` does not.
    */
-  pruneExpired(now?: number): Message[];
-  list(now?: number): Message[];
-  stats(now?: number): OutboxStats;
+  pruneExpired(now?: number): Promise<Message[]>;
+  list(now?: number): Promise<Message[]>;
+  stats(now?: number): Promise<OutboxStats>;
 }
 
 export class InMemoryOutbox implements Outbox {
   private readonly messages = new Map<string, Message>();
   private readonly dedupIndex = new Map<string, string>();
 
-  enqueue(message: Message): string | undefined {
+  async enqueue(message: Message): Promise<string | undefined> {
     let replacedId: string | undefined;
 
     // Same-id overwrite: drop the previous row's dedup mapping if the key changed.
@@ -42,7 +42,7 @@ export class InMemoryOutbox implements Outbox {
     if (message.dedupKey) {
       const existingId = this.dedupIndex.get(message.dedupKey);
       if (existingId && existingId !== message.id) {
-        this.remove(existingId);
+        await this.remove(existingId);
         replacedId = existingId;
       }
       this.dedupIndex.set(message.dedupKey, message.id);
@@ -55,7 +55,7 @@ export class InMemoryOutbox implements Outbox {
     return replacedId;
   }
 
-  remove(id: string): boolean {
+  async remove(id: string): Promise<boolean> {
     const msg = this.messages.get(id);
     if (!msg) return false;
     this.messages.delete(id);
@@ -65,7 +65,7 @@ export class InMemoryOutbox implements Outbox {
     return true;
   }
 
-  removeByDedupKey(dedupKey: string): string | undefined {
+  async removeByDedupKey(dedupKey: string): Promise<string | undefined> {
     const id = this.dedupIndex.get(dedupKey);
     if (id === undefined) return undefined;
     // Always drop the index entry, even if the message row is already gone.
@@ -80,28 +80,28 @@ export class InMemoryOutbox implements Outbox {
     return id;
   }
 
-  has(id: string): boolean {
+  async has(id: string): Promise<boolean> {
     return this.messages.has(id);
   }
 
-  pruneExpired(now = Date.now()): Message[] {
+  async pruneExpired(now = Date.now()): Promise<Message[]> {
     const expired: Message[] = [];
     for (const [id, msg] of this.messages) {
       if (isExpired(msg, now)) {
         expired.push(msg);
-        this.remove(id);
+        await this.remove(id);
       }
     }
     return expired;
   }
 
-  list(now = Date.now()): Message[] {
-    this.pruneExpired(now);
+  async list(now = Date.now()): Promise<Message[]> {
+    await this.pruneExpired(now);
     return sortForFlush([...this.messages.values()]);
   }
 
   /** Snapshot only — does not prune (call `pruneExpired` / `list` to drop TTL). */
-  stats(now = Date.now()): OutboxStats {
+  async stats(now = Date.now()): Promise<OutboxStats> {
     if (this.messages.size === 0) {
       return { depth: 0, oldestAgeMs: null };
     }

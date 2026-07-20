@@ -8,12 +8,12 @@
   "license": "Apache-2.0",
   "scripts": {
     "preinstall": "npx only-allow pnpm",
-    "clean": "pnpm --filter @ntnkit/core --filter @ntnkit/sdk --filter @ntnkit/scan run clean",
-    "build": "pnpm clean && pnpm --filter @ntnkit/core run build && pnpm --filter @ntnkit/sdk --filter @ntnkit/scan run build",
+    "clean": "pnpm --filter @ntnkit/core --filter @ntnkit/sdk --filter @ntnkit/scan --filter @ntnkit/sqlite run clean",
+    "build": "pnpm clean && pnpm --filter @ntnkit/core run build && pnpm --filter @ntnkit/sdk --filter @ntnkit/scan --filter @ntnkit/sqlite run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint packages examples",
-    "typecheck": "pnpm --filter @ntnkit/core run typecheck && pnpm --filter @ntnkit/core run build && pnpm --filter @ntnkit/sdk --filter @ntnkit/scan run typecheck"
+    "typecheck": "pnpm --filter @ntnkit/core run typecheck && pnpm --filter @ntnkit/core run build && pnpm --filter @ntnkit/sdk run typecheck && pnpm --filter @ntnkit/sdk run build && pnpm --filter @ntnkit/scan --filter @ntnkit/sqlite run typecheck"
   },
   "devDependencies": {
     "@eslint/js": "^9.28.0",
@@ -31,6 +31,6 @@
     "pnpm": ">=10"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": ["esbuild", "better-sqlite3"]
   }
 }

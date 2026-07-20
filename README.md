@@ -29,6 +29,7 @@ ntnkit does **not** simulate the radio (use ntn-in-a-box), drive a modem SDK, or
 flowchart TB
   App[Your app]
   SDK["@ntnkit/sdk — Client, Outbox, Transport"]
+  Sqlite["@ntnkit/sqlite — durable store (Node)"]
   Core["@ntnkit/core — Message, Policy, Budget"]
   Scan["@ntnkit/scan — readiness CLI"]
   Transport[Transport e.g. HTTP]
@@ -37,7 +38,9 @@ flowchart TB
 
   App -->|send / flush| SDK
   App -.->|CI / payload checks| Scan
+  App -.->|optional persist| Sqlite
   SDK --> Core
+  Sqlite --> SDK
   SDK -->|getLinkState / send| Transport
   Transport --> Net
   Ntnbox -.->|delay / windows| Net
@@ -47,6 +50,7 @@ flowchart TB
 |---------|------|
 | [`@ntnkit/core`](packages/core) | Pure logic: message model, `shouldSend`, backoff, `ByteBudget` |
 | [`@ntnkit/sdk`](packages/sdk) | `connect()` client, outbox, pluggable `Transport`, `httpTransport`, `ntnboxLinkState` |
+| [`@ntnkit/sqlite`](packages/sqlite) | Node SQLite durable outbox + budget/attempt persistence (`openSqliteStore`) |
 | [`@ntnkit/scan`](packages/scan) | Static readiness rules + `ntnkit-scan` CLI for CI |
 
 **Design rules (v1):** tiny payloads by default; async-first (no sub-second RTT assumption); hybrid terrestrial + NTN; pluggable transports (core never imports modem SDKs); testable under ntn-in-a-box profiles.
@@ -146,6 +150,19 @@ await client.flush();
 await client.close();
 ```
 
+Durable outbox (Node):
+
+```ts
+import { connect, httpTransport } from "@ntnkit/sdk";
+import { openSqliteStore } from "@ntnkit/sqlite";
+
+const store = await openSqliteStore({ path: "./outbox.db" });
+const client = await connect({
+  store,
+  transport: httpTransport({ url: "https://example.com/ingest" }),
+});
+```
+
 ### Examples
 
 ```bash
@@ -200,7 +217,7 @@ Exit `0` = no critical findings, `1` = critical findings, `2` = usage/error.
   - `NextWindow` — only when `linkState === satellite_window_open` (healthy terrestrial alone is not enough)
   - `WhenBudgetAllows` — link up and budget covers the payload
 - **Retries** — attempt caps during `satellite_window_open`; full-jitter backoff; `flush()` continues after a single transport failure
-- **Outbox** — one outbox per `connect()` client; call `close()` to release ownership. Default storage is **in-memory** (process-local)
+- **Outbox** — one outbox per `connect()` client; call `close()` to release ownership. Default storage is **in-memory**. For process-crash survival on Node, pass `store: await openSqliteStore({ path })` from `@ntnkit/sqlite` (at-least-once; use `dedupKey` for idempotency). Budget day boundaries are UTC. SQLite stores are **single-writer** (one process) in v1.
 
 ## Repository layout
 
@@ -208,6 +225,7 @@ Exit `0` = no critical findings, `1` = critical findings, `2` = usage/error.
 packages/
   core/     # types, policy, budget
   sdk/      # client, outbox, http transport, ntnbox link-state
+  sqlite/   # Node durable outbox (better-sqlite3)
   scan/     # readiness CLI
 examples/
   ci-smoke/

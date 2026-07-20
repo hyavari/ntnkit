@@ -1,0 +1,32 @@
+{
+  "name": "@ntnkit/sqlite",
+  "version": "0.0.1",
+  "description": "SQLite durable outbox and runtime state for ntnkit (Node)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@ntnkit/core": "workspace:*",
+    "@ntnkit/sdk": "workspace:*",
+    "better-sqlite3": "^11.10.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

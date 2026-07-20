@@ -66,7 +66,7 @@ async function main(): Promise<void> {
       });
     }
 
-    const stats = client.stats();
+    const stats = await client.stats();
     console.log(
       `sent batch; outbox=${stats.outbox.depth} budget_left=${stats.budget.remainingBytes}`,
     );
