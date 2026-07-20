@@ -24,6 +24,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - name: Scan fixture payload
+        run: node packages/scan/dist/cli.js --payload-file test/fixtures/scan-ok.json
       - run: pnpm --filter @ntnkit/example-ci-smoke start
       - run: NTNKIT_SIMULATE_WINDOW=1 pnpm --filter @ntnkit/example-ci-smoke start
       - run: SMOKE_LIVE=1 pnpm --filter @ntnkit/example-ci-smoke start

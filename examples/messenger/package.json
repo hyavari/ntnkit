@@ -4,12 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prestart": "pnpm --filter @ntnkit/core run build && pnpm --filter @ntnkit/sdk run build",
+    "prestart": "pnpm --filter @ntnkit/core run build && pnpm --filter @ntnkit/sdk --filter @ntnkit/sqlite run build",
     "start": "tsx index.ts"
   },
   "dependencies": {
     "@ntnkit/core": "workspace:*",
-    "@ntnkit/sdk": "workspace:*"
+    "@ntnkit/sdk": "workspace:*",
+    "@ntnkit/sqlite": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.19.4"

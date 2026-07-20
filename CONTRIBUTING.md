@@ -4,7 +4,7 @@ Thanks for helping improve satellite-ready application tooling.
 
 ## Setup
 
-Requires Node.js 20+ and [pnpm](https://pnpm.io) 10+. Use **pnpm only** (`npm install` will fail on this workspace).
+Requires Node.js 24+ and [pnpm](https://pnpm.io) 10+. Use **pnpm only** (`npm install` will fail on this workspace).
 
 ```bash
 pnpm install
@@ -20,6 +20,7 @@ pnpm build
 |---------|------------|
 | `@ntnkit/core` | Pure logic only — no I/O, no `fetch`, no filesystem |
 | `@ntnkit/sdk` | Client, outbox, transports; keep policy decisions in core |
+| `@ntnkit/sqlite` | Node durable store only; keep native deps out of sdk/core |
 | `@ntnkit/scan` | Deterministic rules; CLI exit codes matter for CI |
 
 ## Pull requests

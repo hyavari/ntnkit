@@ -156,6 +156,7 @@ async function runNtnboxAcceptance(): Promise<void> {
     const client = await connect({
       budget: { dailyBytes: 50_000 },
       transport,
+      autoFlush: { intervalMs: 200 },
       onStatus: (event) => {
         if (event.stage === DeliveryStage.Delivered) {
           delivered.push(event.id);
@@ -197,15 +198,22 @@ async function runNtnboxAcceptance(): Promise<void> {
         "coverage open",
       );
 
-      const { sent } = await client.flush();
-      if (sent !== 1) {
-        throw new Error(`expected flush to send 1 message, sent ${sent}`);
-      }
-      if ((await client.stats()).outbox.depth !== 0) {
-        throw new Error("expected empty outbox after delivery");
+      // autoFlush drains — no manual flush() on the normal path.
+      const deadline = Date.now() + waitTimeoutMs;
+      while (Date.now() < deadline) {
+        if (
+          delivered.length === 1 &&
+          (await client.stats()).outbox.depth === 0
+        ) {
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 100));
       }
       if (delivered.length !== 1) {
         throw new Error(`expected 1 delivered event, got ${delivered.length}`);
+      }
+      if ((await client.stats()).outbox.depth !== 0) {
+        throw new Error("expected empty outbox after autoFlush delivery");
       }
       if (sendAttempts() < 1) {
         throw new Error("expected at least one transport send after open");
@@ -222,6 +230,7 @@ async function runNtnboxAcceptance(): Promise<void> {
           mode: "ntnbox",
           sendAttempts: sendAttempts(),
           delivered: delivered.length,
+          autoFlush: true,
         }),
       );
       console.log("ci-smoke: ok");

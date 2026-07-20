@@ -89,7 +89,11 @@ sequenceDiagram
 
 ### Flush (drain the outbox)
 
-Call `flush()` when a satellite window opens (or on a timer / link-change hook). Order: **Critical → High → Normal → Low**, oldest first within a tier. A transport failure does **not** abort the rest of the batch.
+Prefer `autoFlush: true` (or `{ intervalMs }`) on `connect()` so the client
+polls link state and flushes on window open without hand-wiring. Manual
+`flush()` remains available for tests. Order: **Critical → High → Normal → Low**,
+oldest first within a tier. A transport failure does **not** abort the rest of
+the batch.
 
 ```mermaid
 flowchart TD
@@ -132,6 +136,7 @@ import { connect, httpTransport } from "@ntnkit/sdk";
 
 const client = await connect({
   budget: { dailyBytes: 50_000 },
+  autoFlush: true,
   // https:// for production; http:// fine for localhost / CI
   transport: httpTransport({ url: "https://example.com/ingest" }),
   onStatus: ({ id, stage }) => console.log(id, stage),
@@ -145,8 +150,6 @@ await client.send({
   contentType: "application/json",
 });
 
-// When a pass opens (or your link hook fires):
-await client.flush();
 await client.close();
 ```
 
@@ -175,8 +178,12 @@ NTNKIT_SIMULATE_WINDOW=1 pnpm --filter @ntnkit/example-ci-smoke start
 # Live HTTP against a local echo server
 SMOKE_LIVE=1 pnpm --filter @ntnkit/example-ci-smoke start
 
-# Messenger loop
-pnpm --filter @ntnkit/example-messenger start
+# Flagship messenger: text first, large payload deferred (autoFlush)
+NTNKIT_SIMULATE_WINDOW=1 pnpm --filter @ntnkit/example-messenger start
+
+# Same with durable SQLite outbox
+OUTBOX_PATH=./messenger.db NTNKIT_SIMULATE_WINDOW=1 \
+  pnpm --filter @ntnkit/example-messenger start
 ```
 
 ### With ntn-in-a-box

@@ -37,6 +37,11 @@ export interface ClientConfig {
    */
   store?: DurableStore;
   /**
+   * When set, poll link state and call `flush()` in the background so apps
+   * need not wire flush on every window. Default off.
+   */
+  autoFlush?: boolean | { intervalMs?: number };
+  /**
    * Delivery-stage notifications.
    *
    * Timing: invoked only after the client lock is released, so handlers may
@@ -81,6 +86,23 @@ export interface Client {
 type DeliverOutcome = "sent" | "deferred" | "failed";
 
 const claimedOutboxes = new WeakSet<Outbox>();
+const DEFAULT_AUTO_FLUSH_INTERVAL_MS = 1000;
+
+function resolveAutoFlush(autoFlush: ClientConfig["autoFlush"]): {
+  enabled: boolean;
+  intervalMs: number;
+} {
+  if (!autoFlush) {
+    return { enabled: false, intervalMs: DEFAULT_AUTO_FLUSH_INTERVAL_MS };
+  }
+  if (autoFlush === true) {
+    return { enabled: true, intervalMs: DEFAULT_AUTO_FLUSH_INTERVAL_MS };
+  }
+  return {
+    enabled: true,
+    intervalMs: autoFlush.intervalMs ?? DEFAULT_AUTO_FLUSH_INTERVAL_MS,
+  };
+}
 
 export async function connect(config: ClientConfig): Promise<Client> {
   if (config.outbox && config.store) {
@@ -322,6 +344,92 @@ export async function connect(config: ClientConfig): Promise<Client> {
     return "failed";
   }
 
+  async function flushLocked(): Promise<FlushResult> {
+    assertOpen();
+    await emitExpired();
+    let sent = 0;
+    let deferred = 0;
+    let failed = 0;
+
+    const queue = await outbox.list();
+    for (const id of [...attempts.keys()]) {
+      if (!(await outbox.has(id))) await clearAttempt(id);
+    }
+
+    // Continue after failures so later Critical/queued messages still get
+    // an attempt in the same pass (short satellite windows).
+    for (const message of queue) {
+      if (!(await outbox.has(message.id))) {
+        deferred += 1;
+        continue;
+      }
+
+      const outcome = await tryDeliver(message);
+      switch (outcome) {
+        case "sent":
+          sent += 1;
+          break;
+        case "deferred":
+          deferred += 1;
+          break;
+        case "failed":
+          failed += 1;
+          break;
+        default: {
+          const _exhaustive: never = outcome;
+          void _exhaustive;
+        }
+      }
+    }
+
+    return { sent, deferred, failed };
+  }
+
+  const autoFlush = resolveAutoFlush(config.autoFlush);
+  let autoFlushTimer: ReturnType<typeof setInterval> | undefined;
+  let autoFlushLink: LinkState | null = null;
+  let autoFlushBusy = false;
+
+  async function autoFlushTick(): Promise<void> {
+    if (closed || autoFlushBusy) return;
+    autoFlushBusy = true;
+    try {
+      const linkState = await config.transport.getLinkState();
+      const opened =
+        linkState === LinkState.SatelliteWindowOpen &&
+        autoFlushLink !== null &&
+        autoFlushLink !== LinkState.SatelliteWindowOpen;
+      autoFlushLink = linkState;
+      if (linkState === LinkState.Offline) return;
+      const depth = (await outbox.stats()).depth;
+      if (!opened && depth === 0) return;
+      await withLock(async () => {
+        if (closed) return;
+        await flushLocked();
+      });
+    } catch {
+      // Background flush must not crash the process.
+    } finally {
+      autoFlushBusy = false;
+    }
+  }
+
+  function stopAutoFlush(): void {
+    if (autoFlushTimer !== undefined) {
+      clearInterval(autoFlushTimer);
+      autoFlushTimer = undefined;
+    }
+  }
+
+  if (autoFlush.enabled) {
+    autoFlushTimer = setInterval(() => {
+      void autoFlushTick();
+    }, autoFlush.intervalMs);
+    if (typeof autoFlushTimer.unref === "function") {
+      autoFlushTimer.unref();
+    }
+  }
+
   return {
     async send(input: MessageInput): Promise<string> {
       return withLock(async () => {
@@ -341,46 +449,7 @@ export async function connect(config: ClientConfig): Promise<Client> {
     },
 
     async flush(): Promise<FlushResult> {
-      return withLock(async () => {
-        assertOpen();
-        await emitExpired();
-        let sent = 0;
-        let deferred = 0;
-        let failed = 0;
-
-        const queue = await outbox.list();
-        for (const id of [...attempts.keys()]) {
-          if (!(await outbox.has(id))) await clearAttempt(id);
-        }
-
-        // Continue after failures so later Critical/queued messages still get
-        // an attempt in the same pass (short satellite windows).
-        for (const message of queue) {
-          if (!(await outbox.has(message.id))) {
-            deferred += 1;
-            continue;
-          }
-
-          const outcome = await tryDeliver(message);
-          switch (outcome) {
-            case "sent":
-              sent += 1;
-              break;
-            case "deferred":
-              deferred += 1;
-              break;
-            case "failed":
-              failed += 1;
-              break;
-            default: {
-              const _exhaustive: never = outcome;
-              void _exhaustive;
-            }
-          }
-        }
-
-        return { sent, deferred, failed };
-      });
+      return withLock(async () => flushLocked());
     },
 
     async stats() {
@@ -393,6 +462,7 @@ export async function connect(config: ClientConfig): Promise<Client> {
     },
 
     async close(): Promise<void> {
+      stopAutoFlush();
       return withLock(async () => {
         if (closed) return;
         closed = true;

@@ -1095,6 +1095,73 @@ describe("connect ownership and status", () => {
   });
 });
 
+describe("autoFlush", () => {
+  async function waitFor(
+    predicate: () => Promise<boolean>,
+    timeoutMs = 2000,
+  ): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (await predicate()) return;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    throw new Error("waitFor timed out");
+  }
+
+  it("drains on window open without manual flush", async () => {
+    let link = LinkState.Constrained;
+    let sends = 0;
+    const client = await connect({
+      autoFlush: { intervalMs: 40 },
+      transport: {
+        name: "mock",
+        getLinkState: async () => link,
+        async send() {
+          sends += 1;
+          return { delivered: true };
+        },
+      },
+    });
+
+    await client.send({
+      payload: new TextEncoder().encode("x"),
+      delivery: DeliveryMode.NextWindow,
+      dedupKey: "auto-1",
+    });
+    expect((await client.stats()).outbox.depth).toBe(1);
+    expect(sends).toBe(0);
+
+    link = LinkState.SatelliteWindowOpen;
+    await waitFor(async () => (await client.stats()).outbox.depth === 0);
+    expect(sends).toBe(1);
+    await client.close();
+  });
+
+  it("does not start a worker when autoFlush is unset", async () => {
+    let polls = 0;
+    const client = await connect({
+      transport: {
+        name: "mock",
+        getLinkState: async () => {
+          polls += 1;
+          return LinkState.Constrained;
+        },
+        async send() {
+          return { delivered: true };
+        },
+      },
+    });
+    await client.send({
+      payload: new TextEncoder().encode("x"),
+      delivery: DeliveryMode.NextWindow,
+    });
+    await new Promise((r) => setTimeout(r, 80));
+    // send() polls once; no background polls afterward.
+    expect(polls).toBe(1);
+    await client.close();
+  });
+});
+
 describe("httpTransport", () => {
   it("reports fetch failures", async () => {
     const transport = httpTransport({

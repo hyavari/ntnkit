@@ -57,6 +57,9 @@ importers:
       '@ntnkit/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@ntnkit/sqlite':
+        specifier: workspace:*
+        version: link:../../packages/sqlite
     devDependencies:
       tsx:
         specifier: ^4.19.4
