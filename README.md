@@ -114,7 +114,7 @@ Handlers run **after** the client lock releases. Async work is not awaited; sync
 
 ## Quick start
 
-Requires **Node.js 20+** and [pnpm](https://pnpm.io) 10+ (this is a pnpm workspace — do not use `npm install` / `yarn`).
+Requires **Node.js 24+** and [pnpm](https://pnpm.io) 10+ (this is a pnpm workspace — do not use `npm install` / `yarn`).
 
 ```bash
 pnpm install

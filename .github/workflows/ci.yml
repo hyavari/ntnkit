@@ -16,7 +16,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: hyavari/ntn-in-a-box
-          ref: 208637b566c08dae210527640401b8638d3b66ef
+          ref: ff2d29a84b4a32591ae80359123fcca33f0ed1eb
           path: ntn-in-a-box
 
       - uses: actions/setup-go@v5
@@ -53,7 +53,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
           cache-dependency-path: ntnkit/pnpm-lock.yaml
 
