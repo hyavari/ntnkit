@@ -9,12 +9,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Version comes from package.json "packageManager"
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
@@ -32,26 +32,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout ntnkit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: ntnkit
 
       - name: Checkout ntn-in-a-box
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: hyavari/ntn-in-a-box
-          ref: ff2d29a84b4a32591ae80359123fcca33f0ed1eb
+          ref: d9cd59c6003c007223bd4714d6908ac53532f1de
           path: ntn-in-a-box
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.26"
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           package_json_file: ntnkit/package.json
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
