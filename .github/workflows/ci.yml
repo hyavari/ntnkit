@@ -40,18 +40,6 @@ jobs:
         with:
           path: ntnkit
 
-      - name: Checkout ntn-in-a-box
-        uses: actions/checkout@v6
-        with:
-          repository: hyavari/ntn-in-a-box
-          ref: d9cd59c6003c007223bd4714d6908ac53532f1de
-          path: ntn-in-a-box
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: "1.26"
-          cache-dependency-path: ntn-in-a-box/go.sum
-
       - uses: pnpm/action-setup@v5
         with:
           package_json_file: ntnkit/package.json
@@ -79,11 +67,20 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq iproute2 iptables >/dev/null
 
-      - name: Build ntnbox
-        working-directory: ntn-in-a-box
+      # Bump NTNBOX_VERSION when adopting a newer ntn-in-a-box release.
+      - name: Install ntnbox from release
+        env:
+          NTNBOX_VERSION: v0.1.1
         run: |
-          go build -o /tmp/ntnbox ./cmd/ntnbox/
-          sudo cp /tmp/ntnbox /usr/local/bin/ntnbox
+          asset="ntnbox-linux-amd64"
+          base="https://github.com/hyavari/ntn-in-a-box/releases/download/${NTNBOX_VERSION}"
+          cd /tmp
+          curl -fsSL "${base}/${asset}" -o "${asset}"
+          curl -fsSL "${base}/${asset}.sha256" -o "${asset}.sha256"
+          sha256sum -c "${asset}.sha256"
+          chmod +x "${asset}"
+          sudo cp "${asset}" /usr/local/bin/ntnbox
+          ntnbox --help >/dev/null
 
       - name: Run ci-smoke under ntnbox profile
         working-directory: ntnkit
