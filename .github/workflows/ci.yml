@@ -25,7 +25,7 @@ jobs:
       - run: pnpm test
       - run: pnpm build
       - name: Pack check
-        run: pnpm pack:check
+        run: PACK_CHECK_SKIP_BUILD=1 pnpm pack:check
       - name: Scan fixture payload
         run: node packages/scan/dist/cli.js --payload-file test/fixtures/scan-ok.json
       - run: pnpm --filter @ntnkit/example-ci-smoke start
