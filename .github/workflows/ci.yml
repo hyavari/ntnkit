@@ -80,7 +80,7 @@ jobs:
           sha256sum -c "${asset}.sha256"
           chmod +x "${asset}"
           sudo cp "${asset}" /usr/local/bin/ntnbox
-          ntnbox --help >/dev/null
+          ntnbox >/dev/null
 
       - name: Run ci-smoke under ntnbox profile
         working-directory: ntnkit
