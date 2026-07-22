@@ -155,6 +155,40 @@ await client.send({
 await client.close();
 ```
 
+### Five-minute path with ntnbox (no clone)
+
+Use published packages + a release binary (or the public GHCR image). No need to
+clone this repo.
+
+```bash
+mkdir hello-ntn && cd hello-ntn
+pnpm init
+pnpm add @ntnkit/core @ntnkit/sdk
+
+# Short coverage-gap profile (from GitHub; no git clone)
+curl -fsSL -o ci_gap.yaml \
+  https://raw.githubusercontent.com/hyavari/ntnkit/master/test/profiles/ci_gap.yaml
+
+# Linux amd64 binary (macOS: see ntn-in-a-box README — Docker + public GHCR)
+curl -fsSL -o ntnbox \
+  https://github.com/hyavari/ntn-in-a-box/releases/download/v0.1.2/ntnbox-linux-amd64
+curl -fsSL -o ntnbox.sha256 \
+  https://github.com/hyavari/ntn-in-a-box/releases/download/v0.1.2/ntnbox-linux-amd64.sha256
+sha256sum -c ntnbox.sha256 && chmod +x ntnbox
+```
+
+Wire link-state from ntnbox in your app (`ntnboxLinkState` + `autoFlush`), then:
+
+```bash
+sudo ./ntnbox run --addr 0.0.0.0:18080 --profile ./ci_gap.yaml -- \
+  env NTNBOX_API_BASE=http://10.200.0.1:18080 \
+  node ./your-app.mjs
+```
+
+`NTNBOX_API_BASE` must reach the API from inside the shaped netns (host veth
+gateway `10.200.0.1` on Linux). Full acceptance assertions live in
+`examples/ci-smoke` when you develop from source.
+
 Durable outbox (Node):
 
 ```ts

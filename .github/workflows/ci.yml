@@ -70,7 +70,7 @@ jobs:
       # Bump NTNBOX_VERSION when adopting a newer ntn-in-a-box release.
       - name: Install ntnbox from release
         env:
-          NTNBOX_VERSION: v0.1.1
+          NTNBOX_VERSION: v0.1.2
         run: |
           asset="ntnbox-linux-amd64"
           base="https://github.com/hyavari/ntn-in-a-box/releases/download/${NTNBOX_VERSION}"
