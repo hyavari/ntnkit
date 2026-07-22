@@ -120,15 +120,17 @@ flowchart TD
 
 Handlers run **after** the client lock releases. Async work is not awaited; sync throws and rejected promises are swallowed.
 
-## Quick start
-
-Requires **Node.js 24+** and [pnpm](https://pnpm.io) 10+ (this is a pnpm workspace — do not use `npm install` / `yarn`).
+## Install
 
 ```bash
-pnpm install
-pnpm test
-pnpm build
+pnpm add @ntnkit/sdk
+# optional durable outbox (Node):
+pnpm add @ntnkit/sqlite
+# optional CI readiness CLI:
+pnpm add -D @ntnkit/scan
 ```
+
+Requires **Node.js 24+**. Packages are ESM-only.
 
 ```ts
 import { DeliveryMode, Priority } from "@ntnkit/core";
@@ -164,6 +166,16 @@ const client = await connect({
   store,
   transport: httpTransport({ url: "https://example.com/ingest" }),
 });
+```
+
+## Develop from source
+
+Requires **Node.js 24+** and [pnpm](https://pnpm.io) 10+ (this is a pnpm workspace — do not use `npm install` / `yarn`).
+
+```bash
+pnpm install
+pnpm test
+pnpm build
 ```
 
 ### Examples
