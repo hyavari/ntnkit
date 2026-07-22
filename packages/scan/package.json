@@ -1,6 +1,6 @@
 {
   "name": "@ntnkit/scan",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "NTN readiness scanner and conformance checks",
   "type": "module",
   "bin": {
@@ -20,7 +20,24 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "clean": "rm -rf dist"
   },
+  "author": "Hossein Yavari",
   "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hyavari/ntnkit.git",
+    "directory": "packages/scan"
+  },
+  "homepage": "https://github.com/hyavari/ntnkit#readme",
+  "bugs": {
+    "url": "https://github.com/hyavari/ntnkit/issues"
+  },
+  "engines": {
+    "node": ">=24"
+  },
   "dependencies": {
     "@ntnkit/core": "workspace:*"
   }

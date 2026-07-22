@@ -1,6 +1,6 @@
 {
   "name": "@ntnkit/sdk",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "NTN-aware client SDK with outbox and pluggable transports",
   "type": "module",
   "main": "./dist/index.js",
@@ -17,7 +17,24 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "clean": "rm -rf dist"
   },
+  "author": "Hossein Yavari",
   "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hyavari/ntnkit.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://github.com/hyavari/ntnkit#readme",
+  "bugs": {
+    "url": "https://github.com/hyavari/ntnkit/issues"
+  },
+  "engines": {
+    "node": ">=24"
+  },
   "dependencies": {
     "@ntnkit/core": "workspace:*"
   }
