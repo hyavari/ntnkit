@@ -1,6 +1,6 @@
 {
   "name": "@ntnkit/sqlite",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "SQLite durable outbox and runtime state for ntnkit (Node)",
   "type": "module",
   "main": "./dist/index.js",
@@ -11,7 +11,7 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": ["dist", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -28,7 +28,7 @@
     "url": "git+https://github.com/hyavari/ntnkit.git",
     "directory": "packages/sqlite"
   },
-  "homepage": "https://github.com/hyavari/ntnkit#readme",
+  "homepage": "https://github.com/hyavari/ntnkit/tree/master/packages/sqlite#readme",
   "bugs": {
     "url": "https://github.com/hyavari/ntnkit/issues"
   },

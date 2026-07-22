@@ -40,6 +40,10 @@ for name in "${PACKAGES[@]}"; do
     || { echo "FAIL: $name tarball missing package/dist/index.js"; exit 1; }
   echo "$listing" | grep -E 'package/dist/index\.d\.ts' >/dev/null \
     || { echo "FAIL: $name tarball missing package/dist/index.d.ts"; exit 1; }
+  echo "$listing" | grep -E 'package/README\.md' >/dev/null \
+    || { echo "FAIL: $name tarball missing package/README.md"; exit 1; }
+  echo "$listing" | grep -E 'package/LICENSE' >/dev/null \
+    || { echo "FAIL: $name tarball missing package/LICENSE"; exit 1; }
   if [[ "$name" == "scan" ]]; then
     echo "$listing" | grep -E 'package/dist/cli\.js' >/dev/null \
       || { echo "FAIL: scan tarball missing package/dist/cli.js"; exit 1; }
