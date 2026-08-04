@@ -321,4 +321,191 @@ describe("ntnboxLinkState", () => {
       await link.close();
     }
   });
+
+  it("maps in_coverage false to Terrestrial when terrestrialFallback lacks bearer", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/condition")) {
+        return jsonResponse({ in_coverage: false });
+      }
+      return idleSseResponse();
+    });
+
+    const link = ntnboxLinkState({
+      apiBaseUrl: "http://ntnbox.test",
+      fetch: fetchMock as unknown as typeof fetch,
+      pollIntervalMs: 60_000,
+      sse: false,
+      terrestrialFallback: true,
+    });
+
+    try {
+      await expect(link.getLinkState()).resolves.toBe(LinkState.Terrestrial);
+    } finally {
+      await link.close();
+    }
+  });
+
+  it("maps selected_bearer terrestrial when terrestrialFallback is on", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/condition")) {
+        return jsonResponse({
+          in_coverage: false,
+          selected_bearer: "terrestrial",
+        });
+      }
+      return idleSseResponse();
+    });
+
+    const link = ntnboxLinkState({
+      apiBaseUrl: "http://ntnbox.test",
+      fetch: fetchMock as unknown as typeof fetch,
+      pollIntervalMs: 60_000,
+      sse: false,
+      terrestrialFallback: true,
+    });
+
+    try {
+      await expect(link.getLinkState()).resolves.toBe(LinkState.Terrestrial);
+    } finally {
+      await link.close();
+    }
+  });
+
+  it("prefers in_coverage over stale selected_bearer satellite", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/condition")) {
+        return jsonResponse({
+          in_coverage: false,
+          selected_bearer: "satellite",
+        });
+      }
+      return idleSseResponse();
+    });
+
+    const link = ntnboxLinkState({
+      apiBaseUrl: "http://ntnbox.test",
+      fetch: fetchMock as unknown as typeof fetch,
+      pollIntervalMs: 60_000,
+      sse: false,
+      terrestrialFallback: true,
+    });
+
+    try {
+      await expect(link.getLinkState()).resolves.toBe(LinkState.Terrestrial);
+    } finally {
+      await link.close();
+    }
+  });
+
+  it("maps coverage SSE to Terrestrial when terrestrialFallback is on", async () => {
+    let releaseCoverage!: () => void;
+    const coverageGate = new Promise<void>((resolve) => {
+      releaseCoverage = resolve;
+    });
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/condition")) {
+        return jsonResponse({
+          in_coverage: true,
+          selected_bearer: "satellite",
+        });
+      }
+      if (url.endsWith("/events")) {
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream<Uint8Array>({
+          async start(controller) {
+            await coverageGate;
+            controller.enqueue(
+              encoder.encode(
+                'event: coverage\ndata: {"kind":"window_closed","in_coverage":false,"device_id":"sandbox-0"}\n\n',
+              ),
+            );
+          },
+        });
+        return new Response(stream, {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      return new Response(null, { status: 404 });
+    });
+
+    const link = ntnboxLinkState({
+      apiBaseUrl: "http://ntnbox.test",
+      fetch: fetchMock as unknown as typeof fetch,
+      pollIntervalMs: 60_000,
+      sseReconnectMs: 10,
+      terrestrialFallback: true,
+    });
+
+    try {
+      await expect(link.getLinkState()).resolves.toBe(
+        LinkState.SatelliteWindowOpen,
+      );
+      releaseCoverage();
+      await new Promise((r) => setTimeout(r, 40));
+      await expect(link.getLinkState()).resolves.toBe(LinkState.Terrestrial);
+    } finally {
+      await link.close();
+    }
+  });
+
+  it("applies handover SSE when terrestrialFallback is on", async () => {
+    let releaseHandover!: () => void;
+    const handoverGate = new Promise<void>((resolve) => {
+      releaseHandover = resolve;
+    });
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/condition")) {
+        return jsonResponse({
+          in_coverage: true,
+          selected_bearer: "satellite",
+        });
+      }
+      if (url.endsWith("/events")) {
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream<Uint8Array>({
+          async start(controller) {
+            await handoverGate;
+            controller.enqueue(
+              encoder.encode(
+                'event: handover\ndata: {"from":"satellite","to":"terrestrial","reason":"satellite_blocked","device_id":"sandbox-0"}\n\n',
+              ),
+            );
+            // Keep open until abort.
+          },
+        });
+        return new Response(stream, {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      return new Response(null, { status: 404 });
+    });
+
+    const link = ntnboxLinkState({
+      apiBaseUrl: "http://ntnbox.test",
+      fetch: fetchMock as unknown as typeof fetch,
+      pollIntervalMs: 60_000,
+      sseReconnectMs: 10,
+      terrestrialFallback: true,
+    });
+
+    try {
+      await expect(link.getLinkState()).resolves.toBe(
+        LinkState.SatelliteWindowOpen,
+      );
+      releaseHandover();
+      await new Promise((r) => setTimeout(r, 40));
+      await expect(link.getLinkState()).resolves.toBe(LinkState.Terrestrial);
+    } finally {
+      await link.close();
+    }
+  });
 });

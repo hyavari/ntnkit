@@ -177,7 +177,11 @@ curl -fsSL -o ntnbox.sha256 \
 sha256sum -c ntnbox.sha256 && chmod +x ntnbox
 ```
 
-Wire link-state from ntnbox in your app (`ntnboxLinkState` + `autoFlush`), then:
+Wire link-state from ntnbox in your app (`ntnboxLinkState` + `autoFlush`).
+For dual-path profiles (`terrestrial_fallback`), pass
+`terrestrialFallback: true` so `selected_bearer` maps to
+`LinkState.Terrestrial` / `SatelliteWindowOpen` instead of treating
+satellite outage as `Constrained`. Then:
 
 ```bash
 sudo ./ntnbox run --addr 0.0.0.0:18080 --profile ./ci_gap.yaml -- \

@@ -13,6 +13,11 @@ export interface NtnboxLinkStateOptions {
   requestTimeoutMs?: number;
   /** When false, only condition polling is used (default: true). */
   sse?: boolean;
+  /**
+   * When true, prefer ntnbox `selected_bearer` / handover SSE and map
+   * terrestrial → {@link LinkState.Terrestrial} (default: false).
+   */
+  terrestrialFallback?: boolean;
   /** Injectable fetch for tests. */
   fetch?: typeof fetch;
 }
@@ -29,11 +34,17 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 5000;
 
 interface ConditionBody {
   in_coverage?: unknown;
+  selected_bearer?: unknown;
 }
 
 interface CoverageEventBody {
   kind?: unknown;
   in_coverage?: unknown;
+  device_id?: unknown;
+}
+
+interface HandoverEventBody {
+  to?: unknown;
   device_id?: unknown;
 }
 
@@ -51,6 +62,7 @@ export function ntnboxLinkState(
   const requestTimeoutMs =
     options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   const sseEnabled = options.sse !== false;
+  const terrestrialFallback = options.terrestrialFallback === true;
   const base = options.apiBaseUrl.replace(/\/+$/, "");
   const conditionUrl = `${base}/devices/${encodeURIComponent(deviceId)}/condition`;
   const eventsUrl = `${base}/events`;
@@ -71,9 +83,23 @@ export function ntnboxLinkState(
       : LinkState.Constrained;
   }
 
+  function mapBearer(bearer: string): LinkState | undefined {
+    if (bearer === "satellite") return LinkState.SatelliteWindowOpen;
+    if (bearer === "terrestrial") return LinkState.Terrestrial;
+    return undefined;
+  }
+
   function setCoverage(inCoverage: boolean): void {
     current = mapCoverage(inCoverage);
     hasObservation = true;
+  }
+
+  function setBearer(bearer: string): boolean {
+    const mapped = mapBearer(bearer);
+    if (mapped === undefined) return false;
+    current = mapped;
+    hasObservation = true;
+    return true;
   }
 
   function onObservationFailure(): void {
@@ -100,6 +126,10 @@ export function ntnboxLinkState(
       }
       const body = (await res.json()) as ConditionBody;
       if (closed || generation !== pollGeneration) return;
+      if (terrestrialFallback) {
+        applyTerrestrialCondition(body);
+        return;
+      }
       if (typeof body.in_coverage !== "boolean") {
         onObservationFailure();
         return;
@@ -132,16 +162,93 @@ export function ntnboxLinkState(
     }
 
     if (typeof parsed.in_coverage === "boolean") {
+      if (terrestrialFallback) {
+        // Dual-path: coverage is a bearer hint (sat open ↔ satellite, else terr).
+        current = parsed.in_coverage
+          ? LinkState.SatelliteWindowOpen
+          : LinkState.Terrestrial;
+        hasObservation = true;
+        return;
+      }
       setCoverage(parsed.in_coverage);
       return;
     }
 
     if (parsed.kind === "window_opened") {
+      if (terrestrialFallback) {
+        current = LinkState.SatelliteWindowOpen;
+        hasObservation = true;
+        return;
+      }
       setCoverage(true);
       return;
     }
     if (parsed.kind === "window_closed") {
+      if (terrestrialFallback) {
+        current = LinkState.Terrestrial;
+        hasObservation = true;
+        return;
+      }
       setCoverage(false);
+    }
+  }
+
+  function applyTerrestrialCondition(body: ConditionBody): void {
+    const inCoverage =
+      typeof body.in_coverage === "boolean" ? body.in_coverage : undefined;
+    const bearer =
+      typeof body.selected_bearer === "string" ? body.selected_bearer : undefined;
+    const mapped = bearer !== undefined ? mapBearer(bearer) : undefined;
+
+    if (inCoverage !== undefined && mapped !== undefined) {
+      // Prefer in_coverage when it disagrees with selected_bearer (stale route).
+      if (
+        (bearer === "satellite" && !inCoverage) ||
+        (bearer === "terrestrial" && inCoverage)
+      ) {
+        current = inCoverage
+          ? LinkState.SatelliteWindowOpen
+          : LinkState.Terrestrial;
+        hasObservation = true;
+        return;
+      }
+      current = mapped;
+      hasObservation = true;
+      return;
+    }
+    if (mapped !== undefined) {
+      current = mapped;
+      hasObservation = true;
+      return;
+    }
+    if (inCoverage !== undefined) {
+      // Dual-path: satellite outage means terrestrial even without bearer.
+      current = inCoverage
+        ? LinkState.SatelliteWindowOpen
+        : LinkState.Terrestrial;
+      hasObservation = true;
+      return;
+    }
+    onObservationFailure();
+  }
+
+  function applyHandoverEvent(raw: string): void {
+    if (!terrestrialFallback) return;
+    let parsed: HandoverEventBody;
+    try {
+      parsed = JSON.parse(raw) as HandoverEventBody;
+    } catch {
+      return;
+    }
+    if (
+      typeof parsed.device_id === "string" &&
+      parsed.device_id !== "" &&
+      parsed.device_id !== deviceId
+    ) {
+      return;
+    }
+    if (typeof parsed.to === "string") {
+      setBearer(parsed.to);
     }
   }
 
@@ -159,6 +266,7 @@ export function ntnboxLinkState(
         }
         await readSse(res.body, signal, (event, data) => {
           if (event === "coverage") applyCoverageEvent(data);
+          if (event === "handover") applyHandoverEvent(data);
         });
         if (closed || signal.aborted) return;
         await sleep(sseReconnectMs, signal);
