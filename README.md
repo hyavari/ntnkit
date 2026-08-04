@@ -55,6 +55,9 @@ flowchart TB
 
 **Design rules (v1):** tiny payloads by default; async-first (no sub-second RTT assumption); hybrid terrestrial + NTN; pluggable transports (core never imports modem SDKs); testable under ntn-in-a-box profiles.
 
+**0.1.2:** `ntnboxLinkState({ terrestrialFallback: true })` for dual-path
+ntnbox profiles (bearer selection ↔ `LinkState.Terrestrial`).
+
 ## Flows
 
 ### Send (store-and-forward)
@@ -177,11 +180,30 @@ curl -fsSL -o ntnbox.sha256 \
 sha256sum -c ntnbox.sha256 && chmod +x ntnbox
 ```
 
-Wire link-state from ntnbox in your app (`ntnboxLinkState` + `autoFlush`).
-For dual-path profiles (`terrestrial_fallback`), pass
-`terrestrialFallback: true` so `selected_bearer` maps to
-`LinkState.Terrestrial` / `SatelliteWindowOpen` instead of treating
-satellite outage as `Constrained`. Then:
+Wire link-state from ntnbox in your app (`ntnboxLinkState` + `autoFlush`):
+
+```ts
+import { connect, httpTransport, ntnboxLinkState } from "@ntnkit/sdk";
+
+const link = ntnboxLinkState({
+  apiBaseUrl: process.env.NTNBOX_API_BASE!, // e.g. http://10.200.0.1:18080
+  // Dual-path (ntnbox terrestrial_fallback): map selected_bearer →
+  // LinkState.Terrestrial / SatelliteWindowOpen instead of Constrained.
+  terrestrialFallback: true,
+});
+
+const client = await connect({
+  autoFlush: true,
+  transport: httpTransport({
+    url: "https://example.com/ingest",
+    linkState: () => link.getLinkState(),
+  }),
+});
+```
+
+Use `terrestrialFallback: true` with ntnbox profiles such as
+`geo_blockage_handover` (ntn-in-a-box ≥ v0.1.7). Omit it for coverage-gap
+profiles like `ci_gap` (sat down → `Constrained`).
 
 ```bash
 sudo ./ntnbox run --addr 0.0.0.0:18080 --profile ./ci_gap.yaml -- \
@@ -191,7 +213,8 @@ sudo ./ntnbox run --addr 0.0.0.0:18080 --profile ./ci_gap.yaml -- \
 
 `NTNBOX_API_BASE` must reach the API from inside the shaped netns (host veth
 gateway `10.200.0.1` on Linux). Full acceptance assertions live in
-`examples/ci-smoke` when you develop from source.
+`examples/ci-smoke` when you develop from source (default path is coverage-gap,
+not handover).
 
 Durable outbox (Node):
 

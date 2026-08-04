@@ -15,6 +15,11 @@
  *     --profile ../ntnkit/test/profiles/ci_gap.yaml -- \
  *     env NTNBOX_API_BASE=http://10.200.0.1:18080 \
  *     ../ntnkit/scripts/ntnbox-ci-smoke.sh
+ *
+ * Default ntnbox path uses ci_gap (coverage open/close → Constrained when
+ * sat is down). It does NOT enable terrestrialFallback / dual-path handover;
+ * for that, use ntn-in-a-box geo_blockage_handover + terrestrialFallback: true
+ * (see packages/sdk README and unit tests in ntnbox-link-state.test.ts).
  */
 import { createServer, type Server } from "node:http";
 import {
