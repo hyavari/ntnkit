@@ -171,9 +171,9 @@ curl -fsSL -o ci_gap.yaml \
 
 # Linux amd64 binary (macOS: see ntn-in-a-box README — Docker + public GHCR)
 curl -fsSL -o ntnbox \
-  https://github.com/hyavari/ntn-in-a-box/releases/download/v0.1.2/ntnbox-linux-amd64
+  https://github.com/hyavari/ntn-in-a-box/releases/download/v0.1.7/ntnbox-linux-amd64
 curl -fsSL -o ntnbox.sha256 \
-  https://github.com/hyavari/ntn-in-a-box/releases/download/v0.1.2/ntnbox-linux-amd64.sha256
+  https://github.com/hyavari/ntn-in-a-box/releases/download/v0.1.7/ntnbox-linux-amd64.sha256
 sha256sum -c ntnbox.sha256 && chmod +x ntnbox
 ```
 
